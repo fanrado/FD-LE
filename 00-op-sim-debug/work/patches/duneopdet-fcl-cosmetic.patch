@@ -1,0 +1,67 @@
+diff --git a/duneopdet/OpticalDetector/SIPMOpSensorSim.fcl b/duneopdet/OpticalDetector/SIPMOpSensorSim.fcl
+index 04cfda5..bcb6ba1 100644
+--- a/duneopdet/OpticalDetector/SIPMOpSensorSim.fcl
++++ b/duneopdet/OpticalDetector/SIPMOpSensorSim.fcl
+@@ -14,7 +14,7 @@ xarapuca_ar:
+ }
+ 
+ xarapuca_ar_refl:                             @local::xarapuca_ar
+-xarapuca_ar_refl.InputTag:                    "PDFastSim:reflected"
++xarapuca_ar_refl.InputTag:                    "PDFastSimAr:Reflected"   # PDFastSim instance name has a capital R
+ xarapuca_ar_refl.Correction:                  0.5 # 50% ref. efficinecy
+ 
+ # See this link for sources of numbers:
+@@ -22,7 +22,7 @@ xarapuca_ar_refl.Correction:                  0.5 # 50% ref. efficinecy
+ 
+ # All Ar light reduced by 35% due to wavelength cut-off
+ # Early light reduced by ~3% (neglect for now)
+-# Late light reduced to 24%
++# Late light reduced to 31%: 1/(1 + 10 ppm * 1600 ns / 7320 ns ppm), the constants of ScintTimeXeDoping
+ xarapuca_ar_xe10ppm:                         @local::xarapuca_ar
+ xarapuca_ar_xe10ppm.InputTag:                "PDFastSimAr"
+ xarapuca_ar_xe10ppm.Correction:              0.65
+@@ -41,7 +41,7 @@ xarapuca_xe_xe10ppm.Correction:              0.69
+ 
+ # Assume 25% reflection of Xe light off cathode (in VD)
+ xarapuca_xe_xe10ppm_refl:                    @local::xarapuca_xe_xe10ppm
+-xarapuca_xe_xe10ppm_refl.InputTag:           "PDFastSimXe:reflected"
++xarapuca_xe_xe10ppm_refl.InputTag:           "PDFastSimXe:Reflected"
+ xarapuca_xe_xe10ppm_refl.Correction:         0.175 # .25 * .70
+ 
+ # Tuned Xe-only X-ARAPUCAs are potentially 86% more efficient
+@@ -51,7 +51,7 @@ xarapuca_xetuned_xe10ppm.QuantumEfficiency:  0.056
+ 
+ # Assume 25% reflection of Xe light off cathode (in VD)
+ xarapuca_xetuned_xe10ppm_refl:               @local::xarapuca_xetuned_xe10ppm
+-xarapuca_xetuned_xe10ppm_refl.InputTag:      "PDFastSimXe:reflected"
++xarapuca_xetuned_xe10ppm_refl.InputTag:      "PDFastSimXe:Reflected"
+ xarapuca_xetuned_xe10ppm_refl.Correction:    0.175 # .25 * .70
+ 
+ #External volume config for VD
+diff --git a/duneopdet/OpticalDetector/SIPMOpSensorSim_module.cc b/duneopdet/OpticalDetector/SIPMOpSensorSim_module.cc
+index 3f43a2c..99314db 100644
+--- a/duneopdet/OpticalDetector/SIPMOpSensorSim_module.cc
++++ b/duneopdet/OpticalDetector/SIPMOpSensorSim_module.cc
+@@ -372,7 +372,8 @@ namespace opdet {
+ 
+         // Reduce true photons by QE. sdp.numPhotons is already a Poisson draw
+         // (PDFastSim), so each photon is detected with probability QE; a second
+-        // Poisson draw on the mean would give Var/mean = 1+QE instead of 1-QE.
++        // Poisson draw on the mean would give Var/mean of the PE = 1 instead of
++        // 1-QE at a fixed photon count (1+QE instead of 1 over events).
+         int nphot = 0;
+         if (fBinomialQE) {
+           double const p = std::min(1., fQE * lateScale);
+diff --git a/duneopdet/OpticalDetector/opticaldetectormodules_dune.fcl b/duneopdet/OpticalDetector/opticaldetectormodules_dune.fcl
+index 9499889..2626e1d 100644
+--- a/duneopdet/OpticalDetector/opticaldetectormodules_dune.fcl
++++ b/duneopdet/OpticalDetector/opticaldetectormodules_dune.fcl
+@@ -170,7 +170,7 @@ dunefdvd_ophit: @local::dunefd_ophit
+ dunefdvd_ophit.InputModule: opdigi10ppm
+ dunefdvd_ophit.HitAlgoPset.ADCThreshold: 15
+ dunefdvd_ophit.SPEArea: 130
+-dunefdvd_ophit.HitAlgoPset.Pedestal: 500
++dunefdvd_ophit.HitAlgoPset.Pedestal: 500   # not used: AlgoSiPM takes the pedestal from PedAlgoPset (first samples of each snippet)
+ 
+ dunefd_opflash:                 @local::standard_opflash
+ dunefd_opflash.FlashThreshold:  3.5
