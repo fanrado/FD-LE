@@ -1,14 +1,30 @@
 #!/usr/bin/env python3
-"""Before/after plots and numbers for the FD-VD light-simulation bugs (host python3 with numpy + matplotlib).
+"""Every figure and number of the tech-note: the five bugs B, C, D, E, N1, before and after their fix.
 
-usage:  make_plots.py <data dir> <figure dir>
+WHAT IT DOES
+  Compares the light simulation of the same events rerun in 8 configurations (stock code, buggy, each fix alone, all
+  fixes) and makes, for each bug, the before/after figures and the numbers quoted in tech-note/.
 
-Reads <data>/rerun/<config>/<sol|mix>/evt<i>/light.npz (analysis/dump_light.py) and writes, into <figure dir>:
+HOW TO RUN  (from work/, on the host: python3 with numpy and matplotlib, no container needed)
+  1. the events and their reruns (the input of this script):
+       scripts/run_all.sh                              # 20+20 events x 8 configurations (~1.5 h, 12 cores)
+       scripts/run_all.sh 1 1 4                        # quick look: 1 solar-only + 1 mixed event
+     or by hand: scripts/run_chain.sh <sol|mix> <i>, scripts/build_duneopdet.sh, then
+       scripts/run_rerun.sh <config> <sol|mix> <i>   for each of the 8 configurations below
+  2. the plots, then the tech-note:
+       python3 analysis/make_plots.py data ../tech-note/figs
+       ../tech-note/build.sh
+
+  usage:  make_plots.py <data dir> <figure dir>
+
+INPUT   <data dir>/rerun/<config>/<sol|mix>/evt<i>/light.npz  (written by analysis/dump_light.py in run_rerun.sh)
+        configurations: stock, legacy (= E fixed), fixB, fixC, fixD, fixN1, default, all.  An event is used only when
+        all 8 are there; the skipped ones are listed.  Solar-only or mixed events alone are enough for a partial set.
+OUTPUT  in <figure dir>:
   fig_B_*.pdf, fig_C_*.pdf, fig_D_*.pdf, fig_E_*.pdf, fig_N1_*.pdf   one figure set per bug
   numbers.tex      \\newcommand macros with every number quoted in the note
   numbers.txt      the same numbers, readable
   gates.txt        the reproducibility gates (stock rerun == stored products; each fix changes only what it should)
-Configurations (scripts/run_rerun.sh): stock, legacy (= E fixed), fixB, fixC, fixD, fixN1, default, all.
 """
 import glob
 import math
@@ -38,11 +54,24 @@ for f in glob.glob(os.path.join(DATA, "rerun", "*", "*", "evt*", "light.npz")):
     D[(c, s, int(e[3:]))] = dict(np.load(f, allow_pickle=False))
 EV = {s: sorted({i for (c, ss, i) in D if ss == s and all((cc, s, i) in D for cc in CFGS)}) for s in ("sol", "mix")}
 print("complete events:", {s: len(v) for s, v in EV.items()})
+# an event is used only when every configuration is there; say which ones are not (a failed or missing rerun)
+for s in ("sol", "mix"):
+    for i in sorted({i for (c, ss, i) in D if ss == s} - set(EV[s])):
+        print(f"  skipped {s} {i}: no light.npz for {[c for c in CFGS if (c, s, i) not in D]}")
+# a partial sample (one of sol/mix, or few events) gives the plots and numbers of what is there; the tech-note needs both
+SAMPLES = [s for s in ("sol", "mix") if EV[s]]
+if not SAMPLES:
+    sys.exit(f"no event has all of {CFGS} under {DATA}/rerun (scripts/run_rerun.sh); nothing to plot")
 NUM = {}
 
 
 def num(name, value, fmt):
     NUM[name] = (value, fmt.format(value) if not isinstance(value, str) else value)
+
+
+def numv(name):
+    """value of a number, nan when its sample is missing"""
+    return NUM[name][0] if name in NUM else float("nan")
 
 
 def ev(c, s):
@@ -110,7 +139,7 @@ def hit_dups(h):
 
 
 for c in ("legacy", "fixB", "default", "stock"):
-    for s in ("sol", "mix"):
+    for s in SAMPLES:
         sa, ag = tot(c, s, "dup", lambda x: x[0]), tot(c, s, "dup", lambda x: x[1])
         nh = tot(c, s, "hits", len)
         good = lambda h: h[np.abs(h[:, 1]) < WRAP] if len(h) else h  # noqa: E731
@@ -134,7 +163,6 @@ for c in ("legacy", "fixB", "default", "stock"):
 # (12 such places in mixed events 0-19).  Elsewhere the readouts also differ because the doubled noise of bug B fires
 # extra triggers.
 EX_EV, EX_CH, EX_T = 4, 601, -18542 * 0.016
-d0, d1 = D[("legacy", "mix", EX_EV)], D[("fixB", "mix", EX_EV)]
 
 
 def window(d):
@@ -148,29 +176,34 @@ def window(d):
     return rows, ticks
 
 
-fig, axs = plt.subplots(2, 1, figsize=(7, 3.4), sharex=True)
-for ax, d, lab, col in ((axs[0], d0, "before (legacy)", C_BEFORE), (axs[1], d1, "after (MergeOverlappingRanges)", C_AFTER)):
-    rows, ticks = window(d)
-    for k, r in enumerate(rows):
-        ax.barh(k, r[2] * 0.016, left=r[1] - EX_T, height=0.7, color=col, alpha=0.8)
-    ax.set_yticks([])
-    ax.set_ylim(-0.6, max(len(rows), 2) - 0.4)
-    ax.set_ylabel("snippets")
-    ax.set_title(f"{lab}: {len(rows)} snippet{'s' if len(rows) > 1 else ''}, {int(rows[:, 2].sum())} samples stored, "
-                 f"{len(ticks)} of them different", loc="left")
-axs[1].set_xlabel(f"time [us] relative to {EX_T:.2f} us   (OpChannel {EX_CH}, mixed event {EX_EV})")
-save(fig, "fig_B_snippets.pdf")
+if EX_EV in EV["mix"]:
+    d0, d1 = D[("legacy", "mix", EX_EV)], D[("fixB", "mix", EX_EV)]
+    fig, axs = plt.subplots(2, 1, figsize=(7, 3.4), sharex=True)
+    for ax, d, lab, col in ((axs[0], d0, "before (legacy)", C_BEFORE), (axs[1], d1, "after (MergeOverlappingRanges)", C_AFTER)):
+        rows, ticks = window(d)
+        for k, r in enumerate(rows):
+            ax.barh(k, r[2] * 0.016, left=r[1] - EX_T, height=0.7, color=col, alpha=0.8)
+        ax.set_yticks([])
+        ax.set_ylim(-0.6, max(len(rows), 2) - 0.4)
+        ax.set_ylabel("snippets")
+        ax.set_title(f"{lab}: {len(rows)} snippet{'s' if len(rows) > 1 else ''}, {int(rows[:, 2].sum())} samples "
+                     f"stored, {len(ticks)} of them different", loc="left")
+    axs[1].set_xlabel(f"time [us] relative to {EX_T:.2f} us   (OpChannel {EX_CH}, mixed event {EX_EV})")
+    save(fig, "fig_B_snippets.pdf")
+else:
+    print(f"fig_B_snippets.pdf not made: its example is mixed event {EX_EV}")
 
 # B2: summary bars
 fig, axs = plt.subplots(1, 3, figsize=(7.2, 2.6))
 items = [("samples stored twice [%]", "again"), ("duplicate OpHits [%]", "duphits"), ("PE in duplicate OpHits [%]", "duppe")]
 for ax, (title, k) in zip(axs, items):
-    vals = [NUM[f"Blegacymix{k}"][0], NUM[f"BfixBmix{k}"][0], NUM[f"Blegacysol{k}"][0]]
+    vals = [numv(f"Blegacymix{k}"), numv(f"BfixBmix{k}"), numv(f"Blegacysol{k}")]
     bars = ax.bar(["mixed\nbefore", "mixed\nafter", "solar-only\nbefore"], vals, color=[C_BEFORE, C_AFTER, C_REF])
     for b, v in zip(bars, vals):
-        ax.text(b.get_x() + b.get_width() / 2, v, f"{v:.2f}", ha="center", va="bottom", fontsize=8)
+        if not math.isnan(v):
+            ax.text(b.get_x() + b.get_width() / 2, v, f"{v:.2f}", ha="center", va="bottom", fontsize=8)
     ax.set_title(title)
-    ax.set_ylim(0, max(vals) * 1.25 + 0.5)
+    ax.set_ylim(0, np.nanmax(vals) * 1.25 + 0.5)
 save(fig, "fig_B_summary.pdf")
 
 # B3: baseline noise
@@ -178,6 +211,8 @@ fig, ax = plt.subplots(figsize=(4.6, 2.8))
 bins = np.linspace(0, 8, 81)
 for c, s, lab, col, ls in (("legacy", "mix", "mixed, before", C_BEFORE, "-"), ("fixB", "mix", "mixed, after", C_AFTER, "-"),
                            ("legacy", "sol", "solar-only", C_REF, "--")):
+    if not EV[s]:
+        continue
     r = np.concatenate([d["snip"][(d["snip"][:, 3] >= 0) & (np.abs(d["snip"][:, 1]) < WRAP), 3] for d in ev(c, s)])
     ax.hist(r, bins, histtype="step", density=True, color=col, ls=ls, lw=1.4,
             label=f"{lab}: median {np.median(r):.2f} ADC")
@@ -193,13 +228,13 @@ save(fig, "fig_B_noise.pdf")
 
 # ------------------------------------------------------------------------------------------------- bug C
 for c in ("legacy", "fixC", "stock", "all", "default"):
-    for s in ("sol", "mix"):
+    for s in SAMPLES:
         pe = tot(c, s, "pe_marley", lambda x: x[0])
         ph = tot(c, s, "ph_marley", lambda x: x[0])
         num(f"C{c}{s}ratio", pe / max(ph, 1), "{:.3f}")
         num(f"C{c}{s}marley", tot(c, s, "pe_marley", np.sum), "{:,.0f}")
         num(f"C{c}{s}total", tot(c, s, "pe_total", np.sum), "{:,.0f}")
-for s in ("sol", "mix"):
+for s in SAMPLES:
     num(f"Cgain{s}marley", 100 * (NUM[f"CfixC{s}marley"][0] / NUM[f"Clegacy{s}marley"][0] - 1), "{:.1f}")
     num(f"Cgain{s}total", 100 * (NUM[f"CfixC{s}total"][0] / NUM[f"Clegacy{s}total"][0] - 1), "{:.1f}")
     num(f"Cgain{s}ratio", NUM[f"Clegacy{s}ratio"][0] / NUM[f"CfixC{s}ratio"][0], "{:.3f}")
@@ -207,6 +242,9 @@ for s in ("sol", "mix"):
 fig, axs = plt.subplots(1, 2, figsize=(7.2, 2.8))
 for ax, s, title in ((axs[0], "sol", "solar-only"), (axs[1], "mix", "mixed (with radiological background)")):
     ds = [d for d in ev("legacy", s) if "late_evt" in d]
+    if not ds:
+        ax.set_title(f"{title}: no events")
+        continue
     e = ds[0]["late_edges"]
     he = sum(d["late_evt"] for d in ds)
     ht = sum(d["late_trk"] for d in ds)
@@ -226,17 +264,18 @@ for ax, s, title in ((axs[0], "sol", "solar-only"), (axs[1], "mix", "mixed (with
     ax.set_title(title)
 axs[0].set_ylabel("fraction of photons")
 fig.supxlabel("arrival time of the MARLEY argon photons after the reference [ns]", fontsize=9, y=-0.04)
-h, l = axs[0].get_legend_handles_labels()
+h, l = axs[0 if EV["sol"] else 1].get_legend_handles_labels()
 fig.legend(h, l, loc="lower center", ncol=2, frameon=False, bbox_to_anchor=(0.5, -0.17))
 save(fig, "fig_C_arrival.pdf")
 
 fig, ax = plt.subplots(figsize=(4.6, 2.8))
 xs = np.arange(2)
 for k, (c, lab, col) in enumerate((("legacy", "before (event reference)", C_BEFORE), ("fixC", "after (track reference)", C_AFTER))):
-    v = [NUM[f"C{c}solratio"][0], NUM[f"C{c}mixratio"][0]]
+    v = [numv(f"C{c}solratio"), numv(f"C{c}mixratio")]
     b = ax.bar(xs + (k - 0.5) * 0.36, v, 0.36, color=col, label=lab)
     for bb, vv in zip(b, v):
-        ax.text(bb.get_x() + bb.get_width() / 2, vv, f"{vv:.3f}", ha="center", va="bottom", fontsize=8)
+        if not math.isnan(vv):
+            ax.text(bb.get_x() + bb.get_width() / 2, vv, f"{vv:.3f}", ha="center", va="bottom", fontsize=8)
 ax.set_xticks(xs, ["solar-only", "mixed"])
 ax.set_ylabel("MARLEY Ar PE per Ar photon")
 ax.set_ylim(0, 0.3)
@@ -248,8 +287,8 @@ for c in ("legacy", "fixD"):
     t = np.concatenate([d["dark"][:, 2] for s in ("sol", "mix") for d in ev(c, s)])
     num(f"D{c}n", len(t), "{:,d}")
     num(f"D{c}near", 100 * np.mean(np.abs(t) < 5000), "{:.1f}")
-    num(f"D{c}min", t.min() / 1000, "{:.2f}")
-    num(f"D{c}max", t.max() / 1000, "{:.2f}")
+    num(f"D{c}min", t.min() / 1000 if len(t) else float("nan"), "{:.2f}")
+    num(f"D{c}max", t.max() / 1000 if len(t) else float("nan"), "{:.2f}")
 num("Dperevent", NUM["Dlegacyn"][0] / (len(EV["sol"]) + len(EV["mix"])), "{:.1f}")
 fig, axs = plt.subplots(1, 2, figsize=(7.2, 2.6), sharey=True)
 for ax, c, lab, col in ((axs[0], "legacy", "before", C_BEFORE), (axs[1], "fixD", "after", C_AFTER)):
@@ -273,24 +312,27 @@ wr = [d["snip"][np.abs(d["snip"][:, 1]) > WRAP, 1] for d in ev("stock", "mix")]
 wv = float(np.concatenate(wr).min()) if sum(map(len, wr)) else 0.0
 ex = int(math.floor(math.log10(wv))) if wv > 0 else 0
 num("Ewrapvalue", f"${wv / 10 ** ex:.2f}\\times10^{{{ex}}}$", "{}")
-fig, axs = plt.subplots(1, 2, figsize=(7.2, 2.6), gridspec_kw={"width_ratios": [2.2, 1]})
-per_s = [int((np.abs(d["snip"][:, 1]) > WRAP).sum()) for d in ev("stock", "mix")]
-per_l = [int((np.abs(d["snip"][:, 1]) > WRAP).sum()) for d in ev("legacy", "mix")]
-x = np.arange(len(per_s))
-axs[0].bar(x - 0.2, per_s, 0.4, color=C_BEFORE, label=f"before: {sum(per_s)} snippets at {NUM['Ewrapvalue'][1]} us")
-axs[0].bar(x + 0.2, per_l, 0.4, color=C_AFTER, label=f"after: {sum(per_l)}")
-axs[0].set_xticks(x, [str(i) for i in EV["mix"]], fontsize=6)
-axs[0].set_xlabel("mixed event")
-axs[0].set_ylabel("snippets with wrapped start")
-axs[0].legend(frameon=False)
-for c, lab, col in (("stock", "before", C_BEFORE), ("legacy", "after", C_AFTER)):
-    t = np.concatenate([d["snip"][:, 1] for d in ev(c, "mix")])
-    t = t[(t > -4256) & (t < -4245)]
-    axs[1].hist(t, np.linspace(-4255.5, -4245.5, 21), histtype="step", lw=1.4, color=col, label=lab)
-axs[1].set_xlabel("snippet start [us]")
-axs[1].set_title("start of the readout window", fontsize=8)
-axs[1].legend(frameon=False)
-save(fig, "fig_E_wrapped.pdf")
+if EV["mix"]:
+    fig, axs = plt.subplots(1, 2, figsize=(7.2, 2.6), gridspec_kw={"width_ratios": [2.2, 1]})
+    per_s = [int((np.abs(d["snip"][:, 1]) > WRAP).sum()) for d in ev("stock", "mix")]
+    per_l = [int((np.abs(d["snip"][:, 1]) > WRAP).sum()) for d in ev("legacy", "mix")]
+    x = np.arange(len(per_s))
+    axs[0].bar(x - 0.2, per_s, 0.4, color=C_BEFORE, label=f"before: {sum(per_s)} snippets at {NUM['Ewrapvalue'][1]} us")
+    axs[0].bar(x + 0.2, per_l, 0.4, color=C_AFTER, label=f"after: {sum(per_l)}")
+    axs[0].set_xticks(x, [str(i) for i in EV["mix"]], fontsize=6)
+    axs[0].set_xlabel("mixed event")
+    axs[0].set_ylabel("snippets with wrapped start")
+    axs[0].legend(frameon=False)
+    for c, lab, col in (("stock", "before", C_BEFORE), ("legacy", "after", C_AFTER)):
+        t = np.concatenate([d["snip"][:, 1] for d in ev(c, "mix")])
+        t = t[(t > -4256) & (t < -4245)]
+        axs[1].hist(t, np.linspace(-4255.5, -4245.5, 21), histtype="step", lw=1.4, color=col, label=lab)
+    axs[1].set_xlabel("snippet start [us]")
+    axs[1].set_title("start of the readout window", fontsize=8)
+    axs[1].legend(frameon=False)
+    save(fig, "fig_E_wrapped.pdf")
+else:
+    print("fig_E_wrapped.pdf not made: no mixed events")
 
 # ------------------------------------------------------------------------------------------------- bug N1
 def pe_dist(k_dist, nmax=15):
@@ -354,13 +396,13 @@ save(fig, "fig_N1_qe.pdf")
 
 # ------------------------------------------------------------------------------------------------- overall
 for c in ("stock", "default", "all"):
-    for s in ("sol", "mix"):
+    for s in SAMPLES:
         num(f"O{c}{s}pe", tot(c, s, "pe_total", np.sum), "{:,.0f}")
         num(f"O{c}{s}hits", tot(c, s, "hits", lambda a: (np.abs(a[:, 1]) < WRAP).sum() if len(a) else 0), "{:,.0f}")
         num(f"O{c}{s}hitpe", tot(c, s, "hits", lambda a: a[np.abs(a[:, 1]) < WRAP, 4].sum() if len(a) else 0), "{:,.0f}")
         num(f"O{c}{s}marley", tot(c, s, "pe_marley", np.sum), "{:,.0f}")
 
-for s in ("sol", "mix"):
+for s in SAMPLES:
     n = len(EV[s])
     num(f"A{s}pe", NUM[f"Ostock{s}pe"][0] / n, "{:,.0f}")
     num(f"A{s}marley", NUM[f"Ostock{s}marley"][0] / n, "{:,.0f}")
@@ -369,7 +411,7 @@ for s in ("sol", "mix"):
     num(f"A{s}samples", tot("stock", s, "dup", lambda x: x[0]) / n / 1e6, "{:.1f}")
 
 # light versus time in one mixed event
-d = D[("stock", "mix", EV["mix"][0])]
+d = D[("stock", "mix", EV["mix"][0])] if EV["mix"] else {}
 if "t_all" in d:
     e, ta, tm = d["t_edges"], d["t_all"], d["t_marley"]
     fig, axs = plt.subplots(1, 2, figsize=(7.2, 2.6), gridspec_kw={"width_ratios": [1.6, 1]})
