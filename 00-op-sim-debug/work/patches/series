@@ -1,0 +1,11 @@
+# Patches of the FD-VD light-simulation fixes, in the order they are applied (scripts/build_eval.sh).
+# Each line: <repository> <patch file>. Every fix has an fcl switch: scripts/eval_switches.sh.
+dunecore  dunecore-opdetdivrec.patch            # N3: AddPhoton per track; AddPhotonLegacy kept; GetFracs || -> &&
+duneopdet duneopdet-light-sim-fixes.patch       # B, C, D, N1 (switches), E (clamp); = fork commit 6c73f2f
+duneopdet duneopdet-snippet-clamp-switch.patch  # E: ClampSnippetStart
+duneopdet duneopdet-darknoise-allopdets.patch   # N2: DarkNoiseAllOpDets
+duneopdet duneopdet-divrec-pertrack.patch       # N3: DivRecPerTrack (needs the dunecore patch)
+duneopdet duneopdet-snippet-overlap.patch       # N6: SnippetStartAfterPrevious
+duneopdet duneopdet-opflash-index.patch         # A: StoreHitIndices
+duneopdet duneopdet-flashmatchana.patch         # N7 item 6: PEsPerOpDet; OpDetMultisim.fcl include
+duneopdet duneopdet-fcl-cosmetic.patch          # N7 items 3 and 5, Pedestal and N1 comments (no output change)
