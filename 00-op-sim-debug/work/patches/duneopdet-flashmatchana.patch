@@ -1,0 +1,75 @@
+diff --git a/duneopdet/OpticalDetector/FlashMatchAna.fcl b/duneopdet/OpticalDetector/FlashMatchAna.fcl
+index 33f6f4a..1490bee 100644
+--- a/duneopdet/OpticalDetector/FlashMatchAna.fcl
++++ b/duneopdet/OpticalDetector/FlashMatchAna.fcl
+@@ -16,6 +16,7 @@ standard_flashmatchana:
+    kgenerator:           1   #For Edep from signal. Use: beam 1; CosmicRay 2; SuperNovaNeutrino 3; SingleParticle 4
+    IsNDK:                false   #NDK generator/Origin is unknown (0) so this is a trick to separate signal and bkg
+    IsVD:                 false   #If a VD sample, we may want flashes recorded between FC and cryostat lateral
++   PEsPerOpDet:          true    # false = legacy: read PEs() per channel (wrong OpDets and out-of-bounds access in FD-VD)
+    DistanceCut:          240 # cm
+    NBinsE:               50
+    LowE:                 0
+diff --git a/duneopdet/OpticalDetector/FlashMatchAna_module.cc b/duneopdet/OpticalDetector/FlashMatchAna_module.cc
+index d63e74c..c23e2d4 100644
+--- a/duneopdet/OpticalDetector/FlashMatchAna_module.cc
++++ b/duneopdet/OpticalDetector/FlashMatchAna_module.cc
+@@ -87,6 +87,7 @@ namespace opdet {
+     int         fkgenerator;               // Input code for getting Edep
+     bool        fIsNDK;                    // Is it a NDK sample?
+     bool        fIsVD;                     // Is it a FD2-VD sample?
++    bool        fPEsPerOpDet;              // Read a flash's PEs() per OpDet when it has one entry per OpDet (else legacy: per channel)
+ 
+     TTree * fFlashMatchTree;
+     TTree * fLargestFlashTree;
+@@ -202,6 +203,7 @@ namespace opdet {
+     fGeantLabel         = pset.get<std::string>("GeantLabel");
+     fIsNDK              = pset.get<bool>("IsNDK");
+     fIsVD               = pset.get<bool>("IsVD");
++    fPEsPerOpDet        = pset.get<bool>("PEsPerOpDet", true);
+     fkgenerator         = pset.get<int>("kgenerator");
+     fNBinsE             = pset.get<int>("NBinsE");
+     fLowE               = pset.get<float>("LowE");
+@@ -628,10 +630,28 @@ namespace opdet {
+       for(unsigned int iOD = 0; iOD < geom->NOpDets(); ++iOD){
+         fPEsPerOpDetVector.emplace_back(0);
+       }
+-      for(unsigned int iC=0; iC < wireReadout.NOpChannels(); ++iC)
+-      {
+-        unsigned int iOD = wireReadout.OpDetFromOpChannel(iC);
+-        fPEsPerOpDetVector[iOD] += TheFlash.PE(iC);
++      // The flash producers fill PEs() per OpDet (one entry per OpDet: OpFlashFinderVerticalDrift,
++      // SolarOpFlash) or per channel. The legacy loop reads it per channel, with channels 0 ... NOpChannels-1;
++      // in FD-VD (2 channels per OpDet, numbers up to 1831) that books OpDet 10n's PE on OpDet n and reads
++      // and writes past the end of both vectors.
++      if (fPEsPerOpDet && TheFlash.PEs().size() == geom->NOpDets()) {
++        for(unsigned int iOD = 0; iOD < geom->NOpDets(); ++iOD)
++          fPEsPerOpDetVector[iOD] = TheFlash.PE(iOD);
++      }
++      else if (fPEsPerOpDet) {
++        for(unsigned int iC = 0; iC < TheFlash.PEs().size(); ++iC)
++        {
++          if (!wireReadout.IsValidOpChannel(iC)) continue;
++          unsigned int iOD = wireReadout.OpDetFromOpChannel(iC);
++          if (iOD < fPEsPerOpDetVector.size()) fPEsPerOpDetVector[iOD] += TheFlash.PE(iC);
++        }
++      }
++      else {
++        for(unsigned int iC=0; iC < wireReadout.NOpChannels(); ++iC)
++        {
++          unsigned int iOD = wireReadout.OpDetFromOpChannel(iC);
++          fPEsPerOpDetVector[iOD] += TheFlash.PE(iC);
++        }
+       }
+ 
+       fNHitOpDets = 0;
+diff --git a/duneopdet/OpticalDetector/OpDetMultisim.fcl b/duneopdet/OpticalDetector/OpDetMultisim.fcl
+index 5205434..1bab968 100644
+--- a/duneopdet/OpticalDetector/OpDetMultisim.fcl
++++ b/duneopdet/OpticalDetector/OpDetMultisim.fcl
+@@ -1,5 +1,4 @@
+ 
+-#include "largeantmodules_dune.fcl"
+ #include "detsimmodules_dune.fcl"
+ #include "opticaldetectormodules_dune.fcl"
+ #include "OpSlicer.fcl"
