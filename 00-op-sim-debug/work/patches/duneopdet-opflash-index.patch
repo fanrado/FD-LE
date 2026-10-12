@@ -1,0 +1,57 @@
+diff --git a/duneopdet/OpticalDetector/OpFlashFinderVerticalDrift.fcl b/duneopdet/OpticalDetector/OpFlashFinderVerticalDrift.fcl
+index 46e52f0..d85ad75 100644
+--- a/duneopdet/OpticalDetector/OpFlashFinderVerticalDrift.fcl
++++ b/duneopdet/OpticalDetector/OpFlashFinderVerticalDrift.fcl
+@@ -13,6 +13,7 @@ dunefdvd_opflash:
+    Cdyz:                 1500.0 # dist. criteria for neighbouring hits on cathode plane (cm)
+    CMdz:                 1500.0 # dist. criteria for neighbouring hits on cathode and membrane planes (cm)
+    MMdz:                 1500.0 # dist. criteria for neighbouring hits on membrane planes (cm) 
++   StoreHitIndices:      true   # false = legacy: flashes list OpHits by their time rank, i.e. the wrong OpHits
+ }
+ 
+ END_PROLOG
+diff --git a/duneopdet/OpticalDetector/OpFlashFinderVerticalDrift_module.cc b/duneopdet/OpticalDetector/OpFlashFinderVerticalDrift_module.cc
+index b4fe019..62bfa11 100644
+--- a/duneopdet/OpticalDetector/OpFlashFinderVerticalDrift_module.cc
++++ b/duneopdet/OpticalDetector/OpFlashFinderVerticalDrift_module.cc
+@@ -108,6 +108,7 @@ namespace opdet {
+     Double_t fCdyz;                       // distance criteria for position neighbouring hits according to the different combinations of sensor planes with hits
+     Double_t fCMdz;
+     Double_t fMMdz;
++    bool     fStoreHitIndices;            // store OpHit indices in the flash (else legacy: positions in the time-sorted list)
+ 
+ 
+   };
+@@ -157,6 +158,10 @@ namespace opdet {
+     fCdyz = pset.get< double >("Cdyz",400.0);
+     fCMdz = pset.get< double >("CMdz",450.0);
+     fMMdz = pset.get< double >("MMdz",450.0);
++    // getNeighbors returns positions in the time-sorted OpHit list (time ranks); a flash must hold
++    // OpHit indices. false reproduces the legacy flashes, which list the OpHits at those positions
++    // of the unsorted collection instead.
++    fStoreHitIndices = pset.get< bool >("StoreHitIndices", true);
+ 
+   }
+ 
+@@ -522,6 +527,9 @@ namespace opdet {
+            //std::cout << "Go: " << i << nb2.size() << std::endl;
+            N.insert( N.end(), nb2.begin(), nb2.end() );
+        }
++           // getNeighbors returns positions in the time-sorted list (time ranks), the
++           // flash must hold OpHit indices (ConstructFlash and the Assns use them so)
++           if (fStoreHitIndices) for (auto& r : N) r = sorted[r];
+            N.push_back(sorted[h]);
+            //std::cout << "N size:  " << N.size() << std::endl;         
+            HitsPerFlash.push_back(N);
+diff --git a/duneopdet/OpticalDetector/opticaldetectormodules_dune.fcl b/duneopdet/OpticalDetector/opticaldetectormodules_dune.fcl
+index 3a963ad..9499889 100644
+--- a/duneopdet/OpticalDetector/opticaldetectormodules_dune.fcl
++++ b/duneopdet/OpticalDetector/opticaldetectormodules_dune.fcl
+@@ -269,6 +269,7 @@ protodunevd_opflash:
+    Cdyz:                 1500.0 # dist. criteria for neighbouring hits on cathode plane (cm)
+    CMdz:                 1500.0 # dist. criteria for neighbouring hits on cathode and membrane planes (cm)
+    MMdz:                 1500.0 # dist. criteria for neighbouring hits on membrane planes (cm)
++   StoreHitIndices:      true   # false = legacy: flashes list OpHits by their time rank, i.e. the wrong OpHits
+ }
+ 
+ dunefd_opdigiana:
