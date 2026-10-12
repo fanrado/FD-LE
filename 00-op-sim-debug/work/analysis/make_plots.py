@@ -12,7 +12,7 @@ HOW TO RUN  (from work/, on the host: python3 with numpy and matplotlib, no cont
      or by hand: scripts/run_chain.sh <sol|mix> <i>, scripts/build_duneopdet.sh, then
        scripts/run_rerun.sh <config> <sol|mix> <i>   for each of the 8 configurations below
   2. the plots, then the tech-note:
-       python3 analysis/make_plots.py data ../tech-note/figs
+       python3 analysis/make_plots.py $DATA_DIR ../tech-note/figs      ($DATA_DIR: the data directory of the scripts)
        ../tech-note/build.sh
 
   usage:  make_plots.py <data dir> <figure dir>
