@@ -1,0 +1,78 @@
+diff --git a/dunecore/DuneObj/OpDetDivRec.cxx b/dunecore/DuneObj/OpDetDivRec.cxx
+index 68152113..810f5bc3 100644
+--- a/dunecore/DuneObj/OpDetDivRec.cxx
++++ b/dunecore/DuneObj/OpDetDivRec.cxx
+@@ -23,6 +23,13 @@ namespace sim {
+ 
+   //int OpDetDivRec::OpDetNum() const { return fOpDetNum; }
+   void OpDetDivRec::AddPhoton(int opchan, int tid, OpDet_Time_Chans::stored_time_t time){
++    priv_AddPhoton(opchan, tid, time, false);
++  }
++  void OpDetDivRec::AddPhotonLegacy(int opchan, int tid, OpDet_Time_Chans::stored_time_t time){
++    priv_AddPhoton(opchan, tid, time, true);
++  }
++
++  void OpDetDivRec::priv_AddPhoton(int opchan, int tid, OpDet_Time_Chans::stored_time_t time, bool legacy){
+     Time_Chans_t::iterator itr = priv_FindClosestTimeChan(time);
+     if(itr == time_chans.end() || itr->time!=time){
+       std::vector<Chan_Phot> cfl;
+@@ -30,7 +37,17 @@ namespace sim {
+       time_chans.emplace(itr, time, std::move(cfl));
+       if(! std::is_sorted(time_chans.begin(), time_chans.end(), CompareByPdTime() ) ) //Just to guarantee no funny buisiness in the ordering. This shold generally not be an issue because we should always pass this check. After I convince myself it is always filled correctly, I will remove this check.
+         std::sort(time_chans.begin(), time_chans.end(), CompareByPdTime());
++    }else if(!legacy){
++      // The photon goes to the entry of the same channel and track; if there is none, it gets its own entry
++      auto cfp = itr->phots.begin();
++      for(; cfp!= itr->phots.end(); ++cfp){
++        if(cfp->opChan == opchan && cfp->trackID == tid) break;
++      }
++      if(cfp == itr->phots.end()) itr->phots.emplace_back(opchan, tid);
++      else cfp->AddPhoton();
+     }else{
++      // Legacy: '&&' where '||' is needed, and an append that can never run. The photon goes to the first
++      // entry unless both its channel and its track differ; then it is not added at all.
+       for(auto cfp = itr->phots.begin(); cfp!= itr->phots.end(); ++cfp){
+         if(cfp!= itr->phots.end() && cfp->opChan != opchan && cfp->trackID!=tid){
+           continue;
+@@ -47,7 +64,7 @@ namespace sim {
+   std::vector<std::pair<int, double>> OpDetDivRec::GetFracs(OpDet_Time_Chans::stored_time_t time){
+     std::vector<std::pair<int, double>> ret;
+     auto itr = priv_FindClosestTimeChan(time);
+-    if( itr != time_chans.end() || itr->time==time ){
++    if( itr != time_chans.end() && itr->time==time ){
+       ret = itr->GetFracs();
+     }  
+     return ret;
+@@ -56,7 +73,7 @@ namespace sim {
+   std::vector<std::pair<int, double>> OpDetDivRec::GetFracs(OpDet_Time_Chans::stored_time_t time, int tid){
+     std::vector<std::pair<int, double>> ret;
+     auto itr = priv_FindClosestTimeChan(time);
+-    if( itr != time_chans.end() || itr->time==time ){
++    if( itr != time_chans.end() && itr->time==time ){
+       ret = itr->GetFracs(tid);
+     }  
+     return ret;
+diff --git a/dunecore/DuneObj/OpDetDivRec.h b/dunecore/DuneObj/OpDetDivRec.h
+index da02f4e5..9494a3ed 100644
+--- a/dunecore/DuneObj/OpDetDivRec.h
++++ b/dunecore/DuneObj/OpDetDivRec.h
+@@ -100,7 +100,11 @@ namespace sim {
+       OpDetDivRec(int det);
+       Time_Chans_t const& GetTimeChans() const {return time_chans;}
+       int OpDetNum() const{ return fOpDetNum; }
++      /// Adds one photoelectron of channel opchan and track tid at pdTime, to the entry of that channel and track.
+       void AddPhoton(int opchan, int tid, OpDet_Time_Chans::stored_time_t pdTime);
++      /// The AddPhoton of dunecore up to v10_26: at an existing time, the photoelectron goes to the first entry
++      /// whatever its track (or is lost if both channel and track differ). Kept only to compare with old samples.
++      void AddPhotonLegacy(int opchan, int tid, OpDet_Time_Chans::stored_time_t pdTime);
+       std::vector<std::pair<int, double>> GetFracs(OpDet_Time_Chans::stored_time_t time);
+       std::vector<std::pair<int, double>> GetFracs(OpDet_Time_Chans::stored_time_t time, int tid);
+       time_slice GetSlice(OpDet_Time_Chans::stored_time_t low_time, OpDet_Time_Chans::stored_time_t high_time);
+@@ -132,6 +136,7 @@ namespace sim {
+       };
+ 
+     private:
++      void priv_AddPhoton(int opchan, int tid, OpDet_Time_Chans::stored_time_t pdTime, bool legacy);
+       Time_Chans_t::iterator priv_FindClosestTimeChan(OpDet_Time_Chans::stored_time_t pdTime);
+       Time_Chans_t::const_iterator priv_FindClosestTimeChan( OpDet_Time_Chans::stored_time_t pdTime) const;
+ 

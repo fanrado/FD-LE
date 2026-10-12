@@ -1,0 +1,80 @@
+diff --git a/duneopdet/OpticalDetector/SIPMOpSensorSim.fcl b/duneopdet/OpticalDetector/SIPMOpSensorSim.fcl
+index cc76cd0..04cfda5 100644
+--- a/duneopdet/OpticalDetector/SIPMOpSensorSim.fcl
++++ b/duneopdet/OpticalDetector/SIPMOpSensorSim.fcl
+@@ -7,6 +7,7 @@ xarapuca_ar:
+   QuantumEfficiency: 0.030 # 3% X-ARAPUCA efficiency
+   DarkNoiseRate:     10.0 # Hz
+   CrossTalk:         0.20
++  DivRecPerTrack:    true  # false = legacy: a PE at an existing DivRec time is credited to the first track there
+   DarkNoiseTimeInNs: true  # false = legacy: dark-count times in us stored as ns (all within a few us of t = 0)
+   BinomialQE:        true  # false = legacy: Poisson(QE*n) on top of PDFastSim's Poisson (PE variance too large)
+   DarkNoiseAllOpDets: false # true = dark noise also on OpDets without photons; set DarkNoiseRate in one instance only
+diff --git a/duneopdet/OpticalDetector/SIPMOpSensorSim_module.cc b/duneopdet/OpticalDetector/SIPMOpSensorSim_module.cc
+index 5d8122f..3f43a2c 100644
+--- a/duneopdet/OpticalDetector/SIPMOpSensorSim_module.cc
++++ b/duneopdet/OpticalDetector/SIPMOpSensorSim_module.cc
+@@ -85,6 +85,12 @@ namespace opdet {
+       fhicl::Atom<double>         DarkNoiseRate       { Name("DarkNoiseRate"),       Comment("Rate in Hz") };
+       fhicl::Atom<double>         CrossTalk           { Name("CrossTalk"),           Comment("Cross talk (1->2 PE) probability") };
+       fhicl::Atom<double>         Correction          { Name("Correction"),          Comment("Adjust the amount of total light. Kept seprate from QE for clarity."), 1};
++      fhicl::Atom<bool>           DivRecPerTrack      { Name("DivRecPerTrack"),
++                                                        Comment("Credit each PE in the OpDetDivRec to its own track (sim::OpDetDivRec::AddPhoton). "
++                                                                "false reproduces the legacy behaviour (AddPhotonLegacy): a PE at a time that "
++                                                                "already has an entry is credited to that entry's track. Waveforms are the same "
++                                                                "either way. Default true."),
++                                                        true };
+       fhicl::OptionalAtom<double> LateLightCorrection { Name("LateLightCorrection"), Comment("Adjust the amount of late light")};
+       fhicl::OptionalAtom<double> LateLightBoundary   { Name("LateLightBoundary"),   Comment("Boundary that defines late light (ns)") };
+       fhicl::Atom<std::string>    LateLightReference  { Name("LateLightReference"),
+@@ -129,6 +135,7 @@ namespace opdet {
+     double        fTimeEnd;             // Used for defining the dark noise range
+ 
+     // unused double        fCorrection;          // Correct light yield. Kept separate for clarity
++    bool          fDivRecPerTrack;      // Is each PE credited to its own track in the DivRec (else legacy: first entry)?
+     bool          fCorrectLateLight;    // Do we apply a late light correction?
+     double        fLateLightCorrection; // How much to correct the late light
+     double        fLateLightBoundary;   // What is the boundary which defines late light?
+@@ -148,6 +155,9 @@ namespace opdet {
+     // These cannot be const due to the random number generators
+     void PhotonsToPE(sim::OpDetBacktrackerRecord const& btr, sim::OpDetDivRec& dr_plusnoise);
+     void AddDarkNoise(sim::OpDetDivRec &);
++    // Add one PE to the DivRec, the fixed or the legacy way (fDivRecPerTrack)
++    void AddPE(sim::OpDetDivRec& dr, int opchan, int tid, double time) const
++    { if (fDivRecPerTrack) dr.AddPhoton(opchan, tid, time); else dr.AddPhotonLegacy(opchan, tid, time); }
+     unsigned short CrossTalk();
+ 
+     void SetBeginEndTimes();
+@@ -255,6 +265,7 @@ namespace opdet {
+         << "Must be \"Event\" or \"Track\".\n";
+     }
+     fLateLightPerTrack = (lateLightReference == "Track");
++    fDivRecPerTrack    = config().DivRecPerTrack();
+     fDarkNoiseTimeInNs = config().DarkNoiseTimeInNs();
+     fBinomialQE        = config().BinomialQE();
+     fDarkNoiseAllOpDets = config().DarkNoiseAllOpDets();
+@@ -378,9 +389,10 @@ namespace opdet {
+           unsigned int PE = 1+CrossTalk();
+           for(unsigned int i = 0; i < PE; i++) {
+             // Add to collection
+-            dr_plusnoise.AddPhoton(btr.OpDetNum(), // Channel
+-                                   sdp.trackID,    // TrackID
+-                                   time);          // Time
++            AddPE(dr_plusnoise,
++                  btr.OpDetNum(), // Channel
++                  sdp.trackID,    // TrackID
++                  time);          // Time
+           }
+         }
+       }
+@@ -409,8 +421,8 @@ namespace opdet {
+       int PE = 1+CrossTalk();
+       for(int j = 0; j < PE; j++) {
+         // darkNoiseTime is in us (fTimeBegin, fTimeEnd, tau); DivRec times are ns
+-        dr_plusnoise.AddPhoton(dr_plusnoise.OpDetNum(), 0,
+-                               fDarkNoiseTimeInNs ? darkNoiseTime*1000. : darkNoiseTime);
++        AddPE(dr_plusnoise, dr_plusnoise.OpDetNum(), 0,
++              fDarkNoiseTimeInNs ? darkNoiseTime*1000. : darkNoiseTime);
+       }
+ 
+       // Find next time to simulate a single PE pulse
