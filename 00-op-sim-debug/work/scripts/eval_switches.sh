@@ -3,7 +3,7 @@
 # HOW A FIX IS TURNED ON OR OFF
 #
 #   1. The patch (once, at build time).  scripts/build_eval.sh applies every patch of patches/series to clean clones
-#      of dunecore and duneopdet and compiles them into data/evaldev.  A patch adds the corrected code AND keeps the
+#      of dunecore and duneopdet and compiles them into $DATA_DIR/evaldev.  A patch adds the corrected code AND keeps the
 #      old (buggy) code, behind a new fcl parameter.  Nothing is decided yet at this point.
 #
 #   2. The switch (every job, at run time).  Each section below has a boolean
@@ -16,7 +16,7 @@
 #      every bug, on or off, so the result never depends on the defaults of the patch.
 #
 #   So a fix is on in a run if and only if FIX_<ID> was true for that run.  Every run writes its list in
-#   data/eval/run/<config>/<s>/evt<i>/stages_<config>.txt  ("on B C D ...") and the exact fcl lines in the
+#   $DATA_DIR/eval/run/<config>/<s>/evt<i>/stages_<config>.txt  ("on B C D ...") and the exact fcl lines in the
 #   det/detsim.fcl, reco/reco.fcl, g4/g4a.fcl, g4/g4b.fcl of its cache directories (paths in the same file).
 #
 #   Some bugs need no patch: the parameter exists in the stock code and only its value is wrong (N4, N7.1, N7.2, F,

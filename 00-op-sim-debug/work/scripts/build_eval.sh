@@ -5,8 +5,8 @@
 #   scripts/build_eval.sh               (~15-20 min with 12 cores; restarts itself inside the SL7 container)
 #
 # Steps:
-#   1. mrb newDev in data/evaldev
-#   2. clone DUNE/dunecore and DUNE/duneopdet at tag v10_26_00d00 into data/evaldev/srcs/
+#   1. mrb newDev in $DATA_DIR/evaldev
+#   2. clone DUNE/dunecore and DUNE/duneopdet at tag v10_26_00d00 into $DATA_DIR/evaldev/srcs/
 #   3. apply the patches listed in patches/series, in order (each one checked with git apply --check first)
 #   4. mrb install
 #   5. the duneopdet unit test
@@ -14,11 +14,11 @@
 # All patches are compiled in, but each fix has an fcl switch (scripts/eval_switches.sh): the patches decide what the
 # build CAN do, the switches decide what a job DOES.  With every switch off, the build reproduces the stock output.
 #
-# Steps 2-3 run only once: delete data/evaldev/srcs/dunecore and srcs/duneopdet to start again from clean clones.
-# Use the build with:   OPDEV=data/evaldev env/in-sl7.sh <command>
+# Steps 2-3 run only once: delete $DATA_DIR/evaldev/srcs/dunecore and srcs/duneopdet to start again from clean clones.
+# Use the build with:   OPDEV=$DATA_DIR/evaldev env/in-sl7.sh <command>
 #
 # Optional variables:
-#   OPDEV=<dir>       mrb area (default data/evaldev)
+#   OPDEV=<dir>       mrb area (default $DATA_DIR/evaldev)
 #   SERIES=<file>     another patch list (default patches/series)
 #   NJ=<n>            parallel compile jobs (default 12)
 #   SL7_HOST=<host>   wcgpu1 or dunegpvm (see env/in-sl7.sh)
@@ -27,14 +27,20 @@
 # build-source.txt the changed files.
 
 WORK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DATA_DIR=$WORK_DIR/data                           # EDIT: absolute path of the directory where the data is saved
+
+if ! mkdir -p "$DATA_DIR"; then                   # create it if it does not exist
+  printf 'cannot create DATA_DIR=%s: edit DATA_DIR at the top of %s\n' "$DATA_DIR" "$0" >&2
+  exit 2
+fi
 
 if [ -z "${APPTAINER_NAME:-}" ]; then
-  SL7_SETUP=none exec $WORK_DIR/env/in-sl7.sh /bin/bash "$0" "$@"
+  SL7_BINDS=$DATA_DIR SL7_SETUP=none exec $WORK_DIR/env/in-sl7.sh /bin/bash "$0" "$@"
 fi
 
 DUNE_VERSION=v10_26_00d00
 DUNE_QUALIFIERS=e26:prof
-MRB_AREA=${OPDEV:-$WORK_DIR/data/evaldev}
+MRB_AREA=${OPDEV:-$DATA_DIR/evaldev}
 SERIES=${SERIES:-$WORK_DIR/patches/series}
 REPOSITORIES="dunecore duneopdet"
 NJ=${NJ:-12}

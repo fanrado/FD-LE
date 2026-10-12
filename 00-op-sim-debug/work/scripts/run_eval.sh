@@ -6,16 +6,16 @@
 #
 # <config>
 #   stock          CVMFS duneopdet, stock fcl (no switch written)
-#   none           patched build (data/evaldev, scripts/build_eval.sh), every fix off: must reproduce stock
+#   none           patched build ($DATA_DIR/evaldev, scripts/build_eval.sh), every fix off: must reproduce stock
 #   all            every fix on
 #   all-X[-Y..]    every fix on except X, Y, ...  (the effect of bug X in an otherwise fixed simulation)
 #   none+X[+Y..]   only X, Y, ... on              (the effect of fixing X alone)
 # Fix ids and their switches: scripts/eval_switches.sh.   N4 N71 N72 | B C D E N1 N2 N3 N6 | F N5 A
 #
-# Input: data/eval/events/<sol|mix>/evt<idx>/ from scripts/run_chain.sh with KEEP_INTERMEDIATE=1 (reco.root,
-# g4s1.root, job fcls).
+# Input: $DATA_DIR/events/<sol|mix>/evt<idx>/ from scripts/run_chain.sh (reco.root, job fcls; g4s1.root, kept with
+# KEEP_INTERMEDIATE=1, only for the g4 stage).  All paths below are under DATA_DIR.
 #
-# Stages.  Each is cached in data/eval/cache/<stage>/<key>/<sol|mix>/evt<idx>, where <key> names the fixes that are on
+# Stages.  Each is cached in $DATA_DIR/eval/cache/<stage>/<key>/<sol|mix>/evt<idx>, where <key> names the fixes that are on
 # up to that stage, so configurations that agree up to a stage share its output:
 #   g4    only if N4, N71 or N72 is on: PDFastSimAr(+External) on g4s1.root with the random-engine states restored
 #         from its rns snapshot, then the event's own stage-2 job (PDFastSimXe(+External)).  With these fixes off,
@@ -24,7 +24,7 @@
 #   reco  ophit10ppm, opflash10ppm, solarflash + the reco switches; then analysis/dump_light.py -> light.npz and
 #         analysis/eval_dump.py -> eval.npz (snippet hashes, OpHits, flash members, DivRec rows near t = 0)
 #
-# Result: data/eval/run/<config>/<sol|mix>/evt<idx> links to the reco directory.  Its stages_<config>.txt lists the
+# Result: $DATA_DIR/eval/run/<config>/<sol|mix>/evt<idx> links to the reco directory.  Its stages_<config>.txt lists the
 # fixes that were on and the three cache directories (whose g4a.fcl, g4b.fcl, detsim.fcl, reco.fcl hold the exact
 # switch lines).
 #
@@ -32,11 +32,12 @@
 #   DRY_RUN=1      print the fixes ON/OFF, the switch lines and the cache directories; run nothing
 #   FORCE_G4=1     run the g4 stage even with N4, N71, N72 off (to check that it reproduces the stored photons)
 #   SOLARFLASH=1   run solarflash also on mixed events with F on (otherwise skipped: ~1 hour per event)
-#   RUNNAME=<n>    link the result as data/eval/run/<n>/... instead of data/eval/run/<config>/...
+#   RUNNAME=<n>    link the result as eval/run/<n>/... instead of eval/run/<config>/...
 #   SL7_HOST=<h>   wcgpu1 or dunegpvm (see env/in-sl7.sh)
 
 WORK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DATA=${DATA:-$WORK_DIR/data}
+DATA_DIR=$WORK_DIR/data                           # EDIT: absolute path of the directory where the data is saved
+DATA=$DATA_DIR
 
 CONFIG=$1
 SAMPLE=$2
@@ -47,6 +48,10 @@ if [ -z "$EVENT_INDEX" ]; then
   exit 2
 fi
 
+if ! mkdir -p "$DATA_DIR"; then                   # create it if it does not exist
+  printf 'cannot create DATA_DIR=%s: edit DATA_DIR at the top of %s\n' "$DATA_DIR" "$0" >&2
+  exit 2
+fi
 source $WORK_DIR/scripts/eval_switches.sh
 
 
@@ -131,7 +136,7 @@ DET_DIR=$DATA/eval/cache/det/$DET_KEY/$SAMPLE/evt$EVENT_INDEX
 RECO_KEY=$DET_KEY-reco_${RECO_KEY_PART:-off}
 RECO_DIR=$DATA/eval/cache/reco/$RECO_KEY/$SAMPLE/evt$EVENT_INDEX
 
-INPUT_DIR=$DATA/eval/events/$SAMPLE/evt$EVENT_INDEX
+INPUT_DIR=$DATA/events/$SAMPLE/evt$EVENT_INDEX
 RUN_LINK=$DATA/eval/run/${RUNNAME:-$CONFIG}/$SAMPLE/evt$EVENT_INDEX
 
 
@@ -172,11 +177,17 @@ fi
 # ----------------------------------------------------------------------------------------------------------------------
 
 if [ -z "${APPTAINER_NAME:-}" ]; then
-  exec $WORK_DIR/env/in-sl7.sh /bin/bash "$0" "$@"
+  SL7_BINDS=$DATA_DIR exec $WORK_DIR/env/in-sl7.sh /bin/bash "$0" "$@"
 fi
 
 if ! grep -q DONE $INPUT_DIR/status.txt 2> /dev/null; then
-  printf '%s %s %s: input event not ready (%s)\n' $CONFIG $SAMPLE $EVENT_INDEX $INPUT_DIR
+  printf '%s %s %s: input event not ready (%s): scripts/run_chain.sh %s %s\n' \
+    $CONFIG $SAMPLE $EVENT_INDEX $INPUT_DIR $SAMPLE $EVENT_INDEX
+  exit 3
+fi
+if [ $RUN_G4 = yes ] && [ ! -f $INPUT_DIR/g4s1.root ] && [ ! -f $G4_DIR/done ]; then
+  printf '%s %s %s: the G4 fixes need %s/g4s1.root: KEEP_INTERMEDIATE=1 scripts/run_chain.sh %s %s\n' \
+    $CONFIG $SAMPLE $EVENT_INDEX $INPUT_DIR $SAMPLE $EVENT_INDEX
   exit 3
 fi
 

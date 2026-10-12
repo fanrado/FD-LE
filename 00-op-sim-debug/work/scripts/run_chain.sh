@@ -16,10 +16,17 @@
 # Seeds: NuRandomService policy "random", masterSeed = SEED0 + 10*idx + step, the scheme of Xin Qian's fdvd_sim
 # Stage A, so event <s> <idx> here is the same event as in his samples.  (The stock job fcls seed from the wall clock,
 # which makes every rerun a different event.)
-# Output: data/events/<s>/evt<idx>/{reco.root, job_*.fcl, *.log, status.txt}; the intermediate gen/g4/detsim files are
+# Output: $DATA_DIR/events/<s>/evt<idx>/{reco.root, job_*.fcl, *.log, status.txt}; the intermediate gen/g4/detsim files are
 # deleted unless KEEP_INTERMEDIATE=1.
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-[ -n "${APPTAINER_NAME:-}" ] || exec $HERE/env/in-sl7.sh /bin/bash "$0" "$@"
+WORK_DIR=$HERE
+DATA_DIR=$WORK_DIR/data                           # EDIT: absolute path of the directory where the data is saved
+
+if ! mkdir -p "$DATA_DIR"; then                   # create it if it does not exist
+  printf 'cannot create DATA_DIR=%s: edit DATA_DIR at the top of %s\n' "$DATA_DIR" "$0" >&2
+  exit 2
+fi
+[ -n "${APPTAINER_NAME:-}" ] || SL7_BINDS=$DATA_DIR exec $HERE/env/in-sl7.sh /bin/bash "$0" "$@"
 S=$1; I=$2
 case "$S" in
   mix) GENFCL=prodmarley_solar_cc_flat_radiological_decay0_dunevd10kt_1x8x14_3view_30deg.fcl; SEED0=100000; RUN=1 ;;
@@ -27,7 +34,7 @@ case "$S" in
   *) echo "usage: $0 sol|mix <idx>" >&2; exit 2 ;;
 esac
 [ -n "$I" ] || { echo "usage: $0 sol|mix <idx>" >&2; exit 2; }
-W=${DATA:-$HERE/data}/events/$S/evt$I
+W=$DATA_DIR/events/$S/evt$I
 grep -q DONE $W/status.txt 2>/dev/null && { echo "$S $I already done"; exit 0; }
 mkdir -p $W && cd $W || exit 3
 : > status.txt

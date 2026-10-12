@@ -3,29 +3,36 @@
 #
 #   scripts/run_rerun.sh <config> <sol|mix> <idx>          (re-executes itself in the SL7 container)
 #
-# Starts from data/events/<s>/evt<idx>/reco.root (scripts/run_chain.sh), which keeps the photons Geant4 delivered to each
+# Starts from $DATA_DIR/events/<s>/evt<idx>/reco.root (scripts/run_chain.sh), which keeps the photons Geant4 delivered to each
 # photon detector (OpDetBacktrackerRecords), so every configuration sees exactly the same photons.  The event's own
 # detsim seed is reused, so the stock rerun reproduces the stored waveforms bit for bit.
 #
 # config   build                     settings                                               isolates
 #   stock    CVMFS duneopdet v10_26   -                                                       (all bugs present)
-#   legacy   patched (data/opdev)     every knob at its legacy value                          E fixed only (no knob)
+#   legacy   patched (opdev)          every knob at its legacy value                          E fixed only (no knob)
 #   fixB     patched                  legacy + MergeOverlappingRanges true                    B: duplicate snippets
 #   fixC     patched                  legacy + LateLightReference "Track" (Ar products)       C: late-light reference
 #   fixD     patched                  legacy + DarkNoiseTimeInNs true                         D: dark-count times
 #   fixN1    patched                  legacy + BinomialQE true                                N1: Poisson-on-Poisson QE
 #   default  patched                  the patch's defaults: B, D, E, N1 fixed, C legacy       proposed default
 #   all      patched                  default + LateLightReference "Track"                    every fix
-# Output: data/rerun/<config>/<s>/evt<idx>/{light.npz, *.log, detsim.fcl, build.txt}
+# Output: $DATA_DIR/rerun/<config>/<s>/evt<idx>/{light.npz, *.log, detsim.fcl, build.txt}
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DATA=${DATA:-$HERE/data}
+WORK_DIR=$HERE
+DATA_DIR=$WORK_DIR/data                           # EDIT: absolute path of the directory where the data is saved
+
+if ! mkdir -p "$DATA_DIR"; then                   # create it if it does not exist
+  printf 'cannot create DATA_DIR=%s: edit DATA_DIR at the top of %s\n' "$DATA_DIR" "$0" >&2
+  exit 2
+fi
+DATA=$DATA_DIR
 CFG=$1; S=$2; I=$3
 case $CFG in
   stock) ;;
   legacy|fixB|fixC|fixD|fixN1|default|all) export OPDEV=${OPDEV:-$DATA/opdev} ;;
   *) echo "unknown config '$CFG'" >&2; exit 2 ;;
 esac
-[ -n "${APPTAINER_NAME:-}" ] || exec $HERE/env/in-sl7.sh /bin/bash "$0" "$@"
+[ -n "${APPTAINER_NAME:-}" ] || SL7_BINDS=$DATA_DIR exec $HERE/env/in-sl7.sh /bin/bash "$0" "$@"
 IN=$DATA/events/$S/evt$I
 W=$DATA/rerun/$CFG/$S/evt$I
 [ -f $W/light.npz ] && [ -z "${FORCE:-}" ] && { echo "$CFG $S $I already done"; exit 0; }

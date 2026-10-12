@@ -37,15 +37,16 @@
 #   scripts/run_fixes.sh --only B,C,D --one-by-one mix:4     none, none+B, none+C, none+D
 #   scripts/run_fixes.sh --leave-one-out --stock eval6       the full evaluation (heavy: ~100 runs)
 #
-# Requirements: the patched build (scripts/build_eval.sh, once) and the input events in data/eval/events/ (from
-# scripts/run_chain.sh with KEEP_INTERMEDIATE=1).
+# Requirements: the patched build (scripts/build_eval.sh, once) and the input events in $DATA_DIR/events/ (from
+# scripts/run_chain.sh; with KEEP_INTERMEDIATE=1 if a G4 fix N4, N71 or N72 is on).
 #
-# Results: data/eval/run/<config>/<sol|mix>/evt<i>/  (light.npz, eval.npz, reco.root, stages_<config>.txt, which
+# Results: $DATA_DIR/eval/run/<config>/<sol|mix>/evt<i>/  (light.npz, eval.npz, reco.root, stages_<config>.txt, which
 # lists the fixes that were on).  <config> is the name of the set of fixes: all, none, all-A, none+B+C, ...
-# Logs: data/eval/logs/<config>_<sol|mix><i>.log.  A stage already run with the same fixes is not run again.
+# Logs: $DATA_DIR/eval/logs/<config>_<sol|mix><i>.log.  A stage already run with the same fixes is not run again.
 
 WORK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DATA=${DATA:-$WORK_DIR/data}
+DATA_DIR=$WORK_DIR/data                           # EDIT: absolute path of the directory where the data is saved
+DATA=$DATA_DIR
 EVAL_EVENTS="mix:4 mix:0 mix:2 sol:0 sol:3 sol:5"
 
 source $WORK_DIR/scripts/eval_switches.sh
@@ -100,6 +101,10 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "$EVENTS" ] || usage
+if ! mkdir -p "$DATA_DIR"; then                   # create it if it does not exist
+  printf 'cannot create DATA_DIR=%s: edit DATA_DIR at the top of %s\n' "$DATA_DIR" "$0" >&2
+  exit 2
+fi
 check_fixes || exit 2
 
 

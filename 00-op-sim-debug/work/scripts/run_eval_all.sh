@@ -9,10 +9,16 @@
 #   NJOBS=<n>          runs at the same time (default 6)
 #   EVENTS="..."       default "mix:4 mix:0 mix:2 sol:0 sol:3 sol:5"
 #
-# Logs: data/eval/logs/<config>_<sol|mix><i>.log
+# Logs: $DATA_DIR/eval/logs/<config>_<sol|mix><i>.log
 
 WORK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DATA=${DATA:-$WORK_DIR/data}
+DATA_DIR=$WORK_DIR/data                           # EDIT: absolute path of the directory where the data is saved
+
+if ! mkdir -p "$DATA_DIR"; then                   # create it if it does not exist
+  printf 'cannot create DATA_DIR=%s: edit DATA_DIR at the top of %s\n' "$DATA_DIR" "$0" >&2
+  exit 2
+fi
+DATA=$DATA_DIR
 EVENTS=${EVENTS:-"mix:4 mix:0 mix:2 sol:0 sol:3 sol:5"}
 
 source $WORK_DIR/scripts/eval_switches.sh
