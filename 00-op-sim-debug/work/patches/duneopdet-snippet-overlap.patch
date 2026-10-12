@@ -1,0 +1,73 @@
+diff --git a/duneopdet/OpticalDetector/WaveformDigitizerSim.fcl b/duneopdet/OpticalDetector/WaveformDigitizerSim.fcl
+index 98cf891..1d8c0e9 100644
+--- a/duneopdet/OpticalDetector/WaveformDigitizerSim.fcl
++++ b/duneopdet/OpticalDetector/WaveformDigitizerSim.fcl
+@@ -16,6 +16,7 @@ standard_daphne:
+ 
+   Padding:              100      # ticks
+   MergeOverlappingRanges: true   # keep the focus ranges disjoint; false = legacy (stores samples twice under pile-up)
++  SnippetStartAfterPrevious: false # true = a snippet never re-stores samples of the previous one (N6); DAPHNE behaviour unknown
+   ClampSnippetStart:    true     # snippet triggered in the first PreTrigger ticks starts at 0; false = legacy (wraps around)
+   ReadoutWindow:        320      # ticks
+   PreTrigger:            20      # ticks
+diff --git a/duneopdet/OpticalDetector/WaveformDigitizerSim_module.cc b/duneopdet/OpticalDetector/WaveformDigitizerSim_module.cc
+index de9f9bf..c5ceff7 100644
+--- a/duneopdet/OpticalDetector/WaveformDigitizerSim_module.cc
++++ b/duneopdet/OpticalDetector/WaveformDigitizerSim_module.cc
+@@ -113,6 +113,13 @@ namespace opdet {
+                                                                    "of ~3e17 us and its first samples are read from before the waveform buffer. "
+                                                                    "Default true."),
+                                                            true };
++      fhicl::Atom<bool>              SnippetStartAfterPrevious { Name("SnippetStartAfterPrevious"),
++                                                           Comment("Start a snippet no earlier than one tick after the end of the previous snippet of the "
++                                                                   "same focus range, so that no sample is stored twice (its pre-trigger is then "
++                                                                   "shorter). false reproduces the legacy behaviour: a trigger less than PreTrigger "
++                                                                   "ticks after a snippet closed stores up to PreTrigger of its samples again. "
++                                                                   "Default false, until the DAPHNE behaviour is known."),
++                                                           false };
+       fhicl::Atom<size_t>            ReadoutWindow       { Name("ReadoutWindow"),
+                                                            Comment("Total size of the triggered readout window in ticks")};
+       fhicl::Atom<size_t>            PreTrigger          { Name("PreTrigger"),
+@@ -164,6 +171,7 @@ namespace opdet {
+     size_t  fPadding;
+     bool    fMergeOverlappingRanges;
+     bool    fClampSnippetStart;
++    bool    fSnippetStartAfterPrevious;
+     size_t  fReadoutWindow;
+     size_t  fPreTrigger;
+     double  fThresholdPE;
+@@ -274,6 +282,7 @@ namespace opdet {
+     , fPadding{             config().Padding() }
+     , fMergeOverlappingRanges{ config().MergeOverlappingRanges() }
+     , fClampSnippetStart{   config().ClampSnippetStart() }
++    , fSnippetStartAfterPrevious{ config().SnippetStartAfterPrevious() }
+     , fReadoutWindow{       config().ReadoutWindow() }
+     , fPreTrigger{          config().PreTrigger() }
+     , fThresholdPE{         config().Threshold() }
+@@ -566,6 +575,8 @@ namespace opdet {
+       size_t  wstart = -1;
+       size_t  wend   = -1;
+       bool fire   = false;
++      bool   havePrevious = false;   // a snippet of this range was already stored
++      size_t previousEnd  = 0;       // its last tick
+ 
+       for (size_t tick = range.first; tick < range.second - fDwindow; ++tick) {
+ 
+@@ -578,6 +589,8 @@ namespace opdet {
+             // Clamp at the start of the waveform: tick-fPreTrigger would wrap
+             // around (size_t) for a trigger in the first fPreTrigger ticks
+             wstart = (tick >= fPreTrigger || !fClampSnippetStart) ? tick-fPreTrigger : 0;
++            if (fSnippetStartAfterPrevious && havePrevious && wstart <= previousEnd)
++              wstart = previousEnd + 1;
+             wend   = tick-fPreTrigger+fReadoutWindow;
+           }
+           else {
+@@ -592,6 +605,8 @@ namespace opdet {
+           // We've reached the end of a window, save it
+           fire = false;
+           readouts.emplace_back(wstart, wend);
++          havePrevious = true;
++          previousEnd  = wend;
+         }
+ 
+       }
