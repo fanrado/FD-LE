@@ -36,9 +36,9 @@ DUNESW_QUALIFIERS=e26:prof
 CONTAINER_IMAGE=${SL7_IMAGE:-/cvmfs/singularity.opensciencegrid.org/fermilab/fnal-dev-sl7:latest}
 WORK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA_DIR=$WORK_DIR/data                           # EDIT: where the data is saved; made visible in the container
-CONTAINER_TMP_DIR=/home/rrazakami/work/LE_study/FD-LE/tmp                           # EDIT: existing directory used as /tmp in the container;
+# CONTAINER_TMP_DIR=/home/rrazakami/work/LE_study/FD-LE/tmp                           # EDIT: existing directory used as /tmp in the container;
                                                  #       empty = the host /tmp (too small on wcgpu1)
-
+CONAINER_TMP_DIR=/exp/dune/app/users/rrazakam/tmp
 
 # ----------------------------------------------------------------------------------------------------------------------
 # 1. Which host
