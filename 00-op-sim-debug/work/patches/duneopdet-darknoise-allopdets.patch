@@ -1,0 +1,75 @@
+diff --git a/duneopdet/OpticalDetector/SIPMOpSensorSim.fcl b/duneopdet/OpticalDetector/SIPMOpSensorSim.fcl
+index b850c59..cc76cd0 100644
+--- a/duneopdet/OpticalDetector/SIPMOpSensorSim.fcl
++++ b/duneopdet/OpticalDetector/SIPMOpSensorSim.fcl
+@@ -9,6 +9,7 @@ xarapuca_ar:
+   CrossTalk:         0.20
+   DarkNoiseTimeInNs: true  # false = legacy: dark-count times in us stored as ns (all within a few us of t = 0)
+   BinomialQE:        true  # false = legacy: Poisson(QE*n) on top of PDFastSim's Poisson (PE variance too large)
++  DarkNoiseAllOpDets: false # true = dark noise also on OpDets without photons; set DarkNoiseRate in one instance only
+ }
+ 
+ xarapuca_ar_refl:                             @local::xarapuca_ar
+diff --git a/duneopdet/OpticalDetector/SIPMOpSensorSim_module.cc b/duneopdet/OpticalDetector/SIPMOpSensorSim_module.cc
+index 94e7b10..5d8122f 100644
+--- a/duneopdet/OpticalDetector/SIPMOpSensorSim_module.cc
++++ b/duneopdet/OpticalDetector/SIPMOpSensorSim_module.cc
+@@ -59,6 +59,7 @@
+ // C++ includes
+ 
+ #include <vector>
++#include <set>
+ #include <map>
+ #include <string>
+ #include <unordered_map>
+@@ -101,6 +102,13 @@ namespace opdet {
+                                                                 "legacy Poisson(QE*n), which on top of PDFastSim's own Poisson draw inflates the PE "
+                                                                 "variance and allows more PE than photons. Default true."),
+                                                         true };
++      fhicl::Atom<bool>           DarkNoiseAllOpDets  { Name("DarkNoiseAllOpDets"),
++                                                        Comment("Also add dark noise to the OpDets that have no backtracker record in the input "
++                                                                "(no photon from this product). false reproduces the legacy behaviour: dark "
++                                                                "counts only on OpDets that saw light. Note that every SIPMOpSensorSim instance "
++                                                                "adds DarkNoiseRate on its own; to get the rate once per OpDet, set it in one "
++                                                                "instance and DarkNoiseRate: 0 in the others. Default false."),
++                                                        false };
+ 
+     };
+     using Parameters = art::EDProducer::Table<Config>;
+@@ -127,6 +135,7 @@ namespace opdet {
+     bool          fLateLightPerTrack;   // Is late light counted from each track's first photon (else the event's)?
+     bool          fDarkNoiseTimeInNs;   // Are dark-count times converted to ns (else legacy: us stored as ns)?
+     bool          fBinomialQE;          // Is detection binomial per photon (else legacy: Poisson on the mean)?
++    bool          fDarkNoiseAllOpDets;  // Is dark noise added to every OpDet of the geometry (else only to those with a BTR)?
+ 
+     // Random number engines
+     CLHEP::HepRandomEngine& fSIPMEngine;
+@@ -248,6 +257,7 @@ namespace opdet {
+     fLateLightPerTrack = (lateLightReference == "Track");
+     fDarkNoiseTimeInNs = config().DarkNoiseTimeInNs();
+     fBinomialQE        = config().BinomialQE();
++    fDarkNoiseAllOpDets = config().DarkNoiseAllOpDets();
+ 
+     if (fCorrectLateLight && fLateLightCorrection*tempQE > LarProp->ScintPreScale())
+     {
+@@ -288,6 +298,20 @@ namespace opdet {
+       OpDetDivRecPtr->emplace_back(DivRecPlusNoise);
+     }
+ 
++    // PDFastSim writes a BTR only for an OpDet that detected a photon, so the
++    // loop above never sees the dark ones. A SiPM counts in the dark too.
++    if (fDarkNoiseAllOpDets && fDarkNoiseRate > 0.0) {
++      std::set<int> withBTR;
++      for (auto const& btr : *btr_handle) withBTR.insert(btr.OpDetNum());
++      unsigned int const nOpDets = art::ServiceHandle<geo::Geometry const>()->NOpDets();
++      for (unsigned int opDet = 0; opDet < nOpDets; ++opDet) {
++        if (withBTR.count(opDet)) continue;
++        auto DivRecDarkOnly = sim::OpDetDivRec(opDet);
++        AddDarkNoise(DivRecDarkOnly);
++        if (!DivRecDarkOnly.GetTimeChans().empty()) OpDetDivRecPtr->emplace_back(DivRecDarkOnly);
++      }
++    }
++
+     event.put(std::move(OpDetDivRecPtr));
+   }
+ 
