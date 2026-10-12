@@ -1,0 +1,54 @@
+diff --git a/duneopdet/OpticalDetector/WaveformDigitizerSim.fcl b/duneopdet/OpticalDetector/WaveformDigitizerSim.fcl
+index 6283437..98cf891 100644
+--- a/duneopdet/OpticalDetector/WaveformDigitizerSim.fcl
++++ b/duneopdet/OpticalDetector/WaveformDigitizerSim.fcl
+@@ -16,6 +16,7 @@ standard_daphne:
+ 
+   Padding:              100      # ticks
+   MergeOverlappingRanges: true   # keep the focus ranges disjoint; false = legacy (stores samples twice under pile-up)
++  ClampSnippetStart:    true     # snippet triggered in the first PreTrigger ticks starts at 0; false = legacy (wraps around)
+   ReadoutWindow:        320      # ticks
+   PreTrigger:            20      # ticks
+   Threshold:              1.5    # PE
+diff --git a/duneopdet/OpticalDetector/WaveformDigitizerSim_module.cc b/duneopdet/OpticalDetector/WaveformDigitizerSim_module.cc
+index 0e3e8b3..de9f9bf 100644
+--- a/duneopdet/OpticalDetector/WaveformDigitizerSim_module.cc
++++ b/duneopdet/OpticalDetector/WaveformDigitizerSim_module.cc
+@@ -107,6 +107,12 @@ namespace opdet {
+                                                            Comment("Keep the focus ranges disjoint. false reproduces the legacy behaviour, "
+                                                                    "which stores samples twice where pulses pile up. Default true."),
+                                                            true };
++      fhicl::Atom<bool>              ClampSnippetStart   { Name("ClampSnippetStart"),
++                                                           Comment("Start a snippet triggered in the first PreTrigger ticks at tick 0. false reproduces "
++                                                                   "the legacy behaviour: the start wraps around (size_t), the snippet gets a time "
++                                                                   "of ~3e17 us and its first samples are read from before the waveform buffer. "
++                                                                   "Default true."),
++                                                           true };
+       fhicl::Atom<size_t>            ReadoutWindow       { Name("ReadoutWindow"),
+                                                            Comment("Total size of the triggered readout window in ticks")};
+       fhicl::Atom<size_t>            PreTrigger          { Name("PreTrigger"),
+@@ -157,6 +163,7 @@ namespace opdet {
+     // Waveform output settings
+     size_t  fPadding;
+     bool    fMergeOverlappingRanges;
++    bool    fClampSnippetStart;
+     size_t  fReadoutWindow;
+     size_t  fPreTrigger;
+     double  fThresholdPE;
+@@ -266,6 +273,7 @@ namespace opdet {
+ 
+     , fPadding{             config().Padding() }
+     , fMergeOverlappingRanges{ config().MergeOverlappingRanges() }
++    , fClampSnippetStart{   config().ClampSnippetStart() }
+     , fReadoutWindow{       config().ReadoutWindow() }
+     , fPreTrigger{          config().PreTrigger() }
+     , fThresholdPE{         config().Threshold() }
+@@ -569,7 +577,7 @@ namespace opdet {
+             fire   = true;
+             // Clamp at the start of the waveform: tick-fPreTrigger would wrap
+             // around (size_t) for a trigger in the first fPreTrigger ticks
+-            wstart = (tick >= fPreTrigger) ? tick-fPreTrigger : 0;
++            wstart = (tick >= fPreTrigger || !fClampSnippetStart) ? tick-fPreTrigger : 0;
+             wend   = tick-fPreTrigger+fReadoutWindow;
+           }
+           else {
