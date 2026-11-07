@@ -8,6 +8,28 @@ and doc 30).
 
 - **Tech-note:** [`tech-note/fdvd-light-sim-tech-note.pdf`](tech-note/fdvd-light-sim-tech-note.pdf). Start here: it
   explains the low-energy workflow, every step of the light simulation, and each bug with before/after plots.
+- **All bugs in short:** [`docs/SUMMARY.md`](docs/SUMMARY.md). Each bug in plain words, with a waveform picture and
+  what its fix changes, measured on 6 events with every fix switchable on and off.
+- **Plan of the patches and their evaluation:** [`PLAN.md`](PLAN.md).
+- **Notebook, every bug before and after its fix:** [`notebooks/fdvd_light_bugs.ipynb`](notebooks/fdvd_light_bugs.ipynb).
+  Waveforms, histograms, numbers and the effect on charge-light matching, executed. Rebuild:
+  `python3 work/analysis/make_bug_notebook.py`, then `jupyter nbconvert --execute --inplace`.
+- **ROOT macro for the reconstructed files:** [`work/analysis/eval_reco.C`](work/analysis/eval_reco.C). It reads the
+  OpHits, flashes, waveforms and truth of every configuration and does the charge-light matching (a truth-based proxy
+  of `SolarNuAna`). Output: TTrees `evt`, `flash`, `ophit` and a before/after table. Run it in the container:
+  `env/in-sl7.sh root -l -b -q 'analysis/eval_reco.C("data/eval/run", "", "data/eval/eval_reco.root")'`.
+- **Bug B in detail:** [`docs/bugB.md`](docs/bugB.md): overlapping focus ranges in `WaveformDigitizerSim`, from the
+  stock code to the fix, on toy and real waveforms.
+- **The other bugs in detail:** [`docs/bugC.md`](docs/bugC.md) (late-light reference),
+  [`docs/bugD.md`](docs/bugD.md) (dark-count times), [`docs/bugE.md`](docs/bugE.md) (snippet start wraps around),
+  [`docs/bugF.md`](docs/bugF.md) (issue F: the OpHit finder settings drop most of the light; not fixed by the patch).
+- **Further items of Xin Qian's doc 30 (FD-VD):** [`docs/bugA.md`](docs/bugA.md) (flash finder builds flashes from the
+  wrong OpHits), [`docs/bugN1.md`](docs/bugN1.md) (Poisson-on-Poisson detection),
+  [`docs/bugN2.md`](docs/bugN2.md) (dark counts only on lit OpDets, 4 times),
+  [`docs/bugN3.md`](docs/bugN3.md) (`OpDetDivRec` track attribution), [`docs/bugN4.md`](docs/bugN4.md) (residual Ar
+  light keeps the 1.6 µs constant), [`docs/bugN5.md`](docs/bugN5.md) (OpHit PE calibration +0.43),
+  [`docs/bugN6.md`](docs/bugN6.md) (snippets overlap by up to 20 samples), [`docs/bugN7.md`](docs/bugN7.md)
+  (configuration inconsistencies, and the `FlashMatchAna` OpDet/channel index bug).
 - **Code:** [`work/`](work/). Data and builds go to `DATA_DIR`, written at the top of each script.
 - **Background:** the official DUNE low-energy reconstruction (S. Manthey Corchado): job files
   `dunesw/fcl/dunefdvd/reco/solar_reco_dunevd10kt_1x8x14_3view_30deg.fcl`, code in `dunereco/LowEUtils`,
@@ -32,6 +54,7 @@ below `WORK_DIR` at the top of `env/in-sl7.sh` and of each script in `scripts/`;
 cd work
 scripts/run_chain.sh sol 0          # one solar-only event: gen -> g4 -> light detsim -> OpHits   (~2.5 min)
 scripts/run_chain.sh mix 0          # one solar + radiological-background event                    (~10 min, 6 GB)
+scripts/run_chain.sh bkg 0          # one radiological-background-only event (no MARLEY)
 scripts/build_duneopdet.sh          # duneopdet v10_26_00d00 + the fixes, in $DATA_DIR/opdev        (~2 min)
 scripts/run_rerun.sh stock mix 0    # rerun the light simulation of that event: stock build
 scripts/run_rerun.sh all   mix 0    #   ... with every fix
@@ -55,4 +78,5 @@ python3 analysis/make_plots.py $DATA_DIR ../tech-note/figs && ../tech-note/build
 | `work/scripts/run_fixes.sh` | **start here**: rerun events with the fixes you choose (`--only B,C`, `--all-except A`, `--one-by-one`, `--leave-one-out`, `--dry-run`) |
 | `work/scripts/eval_switches.sh` | one section per bug: its `FIX_<ID>=true/false` switch, patch, stage, fcl parameter and page |
 | `work/scripts/run_eval.sh`, `run_eval_all.sh` | the engine behind `run_fixes.sh`: one configuration by name (`all`, `all-X`, `none+X`, `none`, `stock`), with stage caching |
+| `work/analysis/eval_*.py` | dumps, the stock/none gate (`eval_compare.py`), and the figures and numbers of `docs/SUMMARY.md` (`eval_doc.py`) |
 | `tech-note/` | LaTeX source, figures, PDF; `tech-note/build.sh` builds it |

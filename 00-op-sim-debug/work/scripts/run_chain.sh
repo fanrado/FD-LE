@@ -2,13 +2,15 @@
 # The minimum FD-VD low-energy light workflow for one event: gen -> g4 stage 1 -> g4 stage 2 -> light detsim -> OpHits,
 # with the stock dunesw v10_26_00d00 from CVMFS.
 #
-#   scripts/run_chain.sh <sol|mix> <idx>       (re-executes itself inside the SL7 container)
+#   scripts/run_chain.sh <sol|mix|bkg> <idx>       (re-executes itself inside the SL7 container)
 #
 #   sol  solar-only: one MARLEY 8B-like nu_e CC event, nothing else
 #   mix  the same MARLEY generator plus the DUNE radiological background model (~130k decays over +-4.25 ms)
+#   bkg  the radiological background model only, no MARLEY
 #
 # Steps (official job fcls of the FD-VD 1x8x14_3view_30deg workspace):
-#   1 gen     prodmarley_solar_cc_flat[_radiological_decay0]_dunevd10kt_1x8x14_3view_30deg.fcl
+#   1 gen     prodmarley_solar_cc_flat[_radiological_decay0]_dunevd10kt_1x8x14_3view_30deg.fcl   (sol, mix)
+#             prodbackground_radiological_decay0_dunevd10kt_1x8x14_3view_30deg.fcl       (bkg)
 #   2 g4s1    supernova_g4stage1_dunevd10kt_1x8x14_3view_30deg.fcl   (Geant4, charge depos, Ar scintillation light)
 #   3 g4s2    standard_g4stage2_dunevd10kt_1x8x14_3view_30deg.fcl    (Xe light from the same depos)
 #   4 detsim  fcl/detsim_light_only.fcl                              (photons -> PE -> digitised snippets)
@@ -31,9 +33,10 @@ S=$1; I=$2
 case "$S" in
   mix) GENFCL=prodmarley_solar_cc_flat_radiological_decay0_dunevd10kt_1x8x14_3view_30deg.fcl; SEED0=100000; RUN=1 ;;
   sol) GENFCL=prodmarley_solar_cc_flat_dunevd10kt_1x8x14_3view_30deg.fcl;                     SEED0=200000; RUN=2 ;;
-  *) echo "usage: $0 sol|mix <idx>" >&2; exit 2 ;;
+  bkg) GENFCL=prodbackground_radiological_decay0_dunevd10kt_1x8x14_3view_30deg.fcl;             SEED0=300000; RUN=3 ;;
+  *) echo "usage: $0 sol|mix|bkg <idx>" >&2; exit 2 ;;
 esac
-[ -n "$I" ] || { echo "usage: $0 sol|mix <idx>" >&2; exit 2; }
+[ -n "$I" ] || { echo "usage: $0 sol|mix|bkg <idx>" >&2; exit 2; }
 W=$DATA_DIR/events/$S/evt$I
 grep -q DONE $W/status.txt 2>/dev/null && { echo "$S $I already done"; exit 0; }
 mkdir -p $W && cd $W || exit 3
