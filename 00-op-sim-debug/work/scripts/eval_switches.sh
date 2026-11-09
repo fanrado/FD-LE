@@ -352,12 +352,15 @@ EOF
 # Bug F -- the OpHit finder throws away most small pulses
 # ----------------------------------------------------------------------------------------------------------------------
 #   bug      MinWidth 60 ticks is longer than a single-PE pulse, so most small pulses give no OpHit.
-#   effect   OpHits report 31% -> 60% of the neutrino light
+#   effect   OpHits report 31% -> 60% of the neutrino light (measured with MinWidth 10)
 #   stage    reco  (module ophit10ppm)
 #   patch    none: the parameter exists, its value is the fix
-#   switch   HitAlgoPset.MinWidth            60 (bug)  ->  10 (fixed)
-#   note     with F on, a mixed event has ~167k OpHits and SolarOpFlash takes ~1 hour: run_eval.sh skips solarflash
-#            there (SOLARFLASH=1 runs it anyway)
+#   switch   HitAlgoPset.MinWidth            60 (bug)  ->  30 (fixed)
+#            30 = width of an FD-VD single-PE pulse above pedestal + 1 ADC (SecondThreshold):
+#            PeakTime + BackTime x ln(10 ADC / 1 ADC) = 0.028 + 0.200 x 2.30 = 0.49 us = 30 samples of 16 ns
+#            (standard_vddaphne); 60 matches the ProtoDUNE-VD template pulse (57 samples) instead
+#   note     with MinWidth 10, a mixed event had ~167k OpHits and SolarOpFlash took ~1 hour: run_eval.sh skips
+#            solarflash there when F is on (SOLARFLASH=1 runs it anyway); not yet measured with 30
 #   page     docs/bugF.md
 
 FIX_F=${FIX_F:-true}
@@ -368,7 +371,7 @@ PATCH_F="(none, fcl value)"
 
 fcl_F() {
   local min_width=60
-  [ "$FIX_F" = true ] && min_width=10
+  [ "$FIX_F" = true ] && min_width=30
 
   cat <<EOF
 physics.producers.ophit10ppm.HitAlgoPset.MinWidth: $min_width
@@ -384,9 +387,9 @@ EOF
 #   stage    reco  (module ophit10ppm)
 #   patch    none: the parameters exist, their values are the fix
 #   switch   SPEArea                         130 (bug)   ->  132.6 (fixed)
-#            SPEShift                        0.43 (bug)  ->  0.24 (fixed), ONLY IF F IS ALSO ON
-#   note     depends on F: 0.24 is the shift for MinWidth 10.  For MinWidth 60 the right shift is not defined
-#            (docs/bugN5.md section 5), so with F off, N5 changes SPEArea only.
+#            SPEShift                        0.43, unchanged until measured for MinWidth 30 (0.24 for MinWidth 10)
+#   note     depends on F: 0.24 is the shift measured for MinWidth 10, not for 60 (not defined, docs/bugN5.md
+#            section 5) nor for 30 (not measured yet), so N5 changes SPEArea only.
 #   page     docs/bugN5.md
 
 FIX_N5=${FIX_N5:-true}
@@ -399,7 +402,7 @@ fcl_N5() {
   local spe_area=130
   local spe_shift=0.43
   [ "$FIX_N5" = true ]                         && spe_area=132.6
-  [ "$FIX_N5" = true ] && [ "$FIX_F" = true ]  && spe_shift=0.24
+  # 0.24 is the shift for MinWidth 10 only; F now uses 30, whose shift is not measured yet: keep 0.43
 
   cat <<EOF
 physics.producers.ophit10ppm.SPEArea: $spe_area
